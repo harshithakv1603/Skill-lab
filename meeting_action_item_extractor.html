@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meeting Action Item Extractor</title>
+  <style>
+    :root { --blue:#2563eb; --ink:#172033; --muted:#64748b; --line:#dbe3ef; --bg:#f4f7fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Arial, Helvetica, sans-serif; background:var(--bg); color:var(--ink); }
+    .wrap { max-width:960px; margin:36px auto; padding:0 18px; }
+    .panel { background:#fff; border:1px solid var(--line); border-radius:16px; padding:24px; box-shadow:0 8px 28px rgba(20,40,80,.06); }
+    h1 { margin:0 0 8px; font-size:27px; }
+    .intro { color:var(--muted); margin:0 0 22px; line-height:1.5; }
+    label { display:block; font-weight:700; margin:16px 0 8px; }
+    textarea { width:100%; min-height:220px; resize:vertical; padding:14px; border:1px solid var(--line); border-radius:10px; font:14px/1.55 Arial,sans-serif; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; align-items:center; }
+    button { border:0; border-radius:9px; padding:11px 17px; font-weight:700; cursor:pointer; }
+    .primary { background:var(--blue); color:white; }
+    .secondary { background:#eaf0fb; color:#1e3a8a; }
+    button:hover { filter:brightness(.96); }
+    .hint { color:var(--muted); font-size:13px; line-height:1.5; }
+    #status { margin-top:14px; color:var(--muted); font-size:14px; }
+    #results { margin-top:22px; }
+    .item { border:1px solid var(--line); border-radius:10px; padding:14px; margin:10px 0; background:#fbfdff; }
+    .task { font-weight:700; margin-bottom:7px; }
+    .meta { color:var(--muted); font-size:13px; }
+    .empty { padding:16px; border-radius:10px; background:#fff8e7; color:#854d0e; }
+    .tag { display:inline-block; background:#eaf0fb; color:#1e40af; padding:4px 8px; border-radius:20px; font-size:12px; margin-left:6px; }
+    footer { color:var(--muted); font-size:12px; margin:16px 2px 0; line-height:1.5; }
+    @media(max-width:600px) { .panel { padding:18px; } h1 { font-size:23px; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="panel">
+      <h1>Meeting Action Item Extractor</h1>
+      <p class="intro">Paste your meeting notes and extract tasks, owners, and deadlines. This standalone HTML version works offline in your browser.</p>
+
+      <label for="notes">Meeting notes</label>
+      <textarea id="notes">Website revamp kickoff
+Alex: What are the main features you want on the new landing page?
+Client: We need a modern hero section, customer testimonials, and an integrated booking calendar.
+Alex: Would you prefer Calendly integration or a custom-built solution?
+Client: Calendly works fine and keeps it simple.
+Alex: Perfect, I'll prepare the initial wireframes by Wednesday.</textarea>
+
+      <div class="actions">
+        <button class="primary" id="extractBtn">✓ Extract action items</button>
+        <button class="secondary" id="sampleBtn">Load sample notes</button>
+        <button class="secondary" id="clearBtn">Clear</button>
+      </div>
+      <p class="hint">Offline matching recognizes lines such as: <b>Alex: prepare the wireframes by Wednesday.</b></p>
+      <div id="status" role="status">Ready.</div>
+      <section id="results" aria-live="polite"></section>
+      <footer>
+        Note: The original Python program's Gemini mode needs a secure server-side endpoint. Do not place a Gemini API key in an HTML or JavaScript file that users can view. This page currently provides offline extraction.
+      </footer>
+    </section>
+  </main>
+
+  <script>
+    const sampleNotes = `Website revamp kickoff
+Alex: What are the main features you want on the new landing page?
+Client: We need a modern hero section, customer testimonials, and an integrated booking calendar.
+Alex: Would you prefer Calendly integration or a custom-built solution?
+Client: Calendly works fine and keeps it simple.
+Alex: Perfect, I'll prepare the initial wireframes by Wednesday.`;
+
+    const actionWords = [
+      "assign", "complete", "review", "schedule", "submit", "create",
+      "develop", "prepare", "implement", "test", "update", "verify",
+      "check", "send", "share", "discuss", "organize", "manage", "plan",
+      "finalize", "approve", "coordinate", "research", "analyze", "fix",
+      "resolve", "deliver", "present", "contact", "follow up"
+    ];
+
+    const notes = document.getElementById("notes");
+    const status = document.getElementById("status");
+    const results = document.getElementById("results");
+
+    function extractOffline(text) {
+      const actions = [];
+      const pattern = /^([^:\n]+):\s*(.+?)\s+by\s+([^\n.]+)[.]?$/i;
+
+      for (const line of text.split(/\r?\n/)) {
+        const match = line.trim().match(pattern);
+        if (!match) continue;
+
+        const task = match[2].trim();
+        const firstWord = task.toLowerCase().match(/[a-z]+(?:\s+[a-z]+)?/);
+        // Keep the original Python behavior: any "Name: task by deadline" line qualifies.
+        actions.push({
+          owner: match[1].trim(),
+          task,
+          deadline: match[3].trim()
+        });
+      }
+      return actions;
+    }
+
+    function showActions(actions) {
+      results.replaceChildren();
+      if (!actions.length) {
+        results.innerHTML = '<div class="empty">No action items found. Try a line in this format: <b>Name: task by deadline</b></div>';
+        return;
+      }
+      actions.forEach((action, index) => {
+        const card = document.createElement("article");
+        card.className = "item";
+        const task = document.createElement("div");
+        task.className = "task";
+        task.textContent = `${index + 1}. ${action.task}`;
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = `Owner: ${action.owner}  |  Due: ${action.deadline}`;
+        card.append(task, meta);
+        results.append(card);
+      });
+      const note = document.createElement("p");
+      note.className = "hint";
+      note.textContent = "Review every item against the original notes before using it.";
+      results.append(note);
+    }
+
+    document.getElementById("extractBtn").addEventListener("click", () => {
+      const text = notes.value.trim();
+      results.replaceChildren();
+      if (!text) {
+        status.textContent = "Please enter meeting notes first.";
+        return;
+      }
+      status.textContent = "Mode: OFFLINE";
+      const actions = extractOffline(text);
+      showActions(actions);
+      status.textContent = `Finished. Found ${actions.length} action item(s).`;
+    });
+
+    document.getElementById("sampleBtn").addEventListener("click", () => {
+      notes.value = sampleNotes;
+      status.textContent = "Sample notes loaded.";
+      results.replaceChildren();
+    });
+
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      notes.value = "";
+      results.replaceChildren();
+      status.textContent = "Cleared. Paste your meeting notes to begin.";
+    });
+  </script>
+</body>
+</html>
